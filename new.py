@@ -51,7 +51,7 @@ class NewDlg (QDialog):
 			for i in range (cnt):
 				curr = self.parent.table.topLevelItem (i)
 				if curr.vid_id == self.vid_id:
-					QMessageBox.critical (self, 'Already there', 'This video is already in the list.')
+					QMessageBox.critical (self, 'Already there', curr.title+' is already in the list.')
 					return
 			self.accept()
 		else:
