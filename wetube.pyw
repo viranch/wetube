@@ -36,7 +36,7 @@ class Item (QTreeWidgetItem):
 		self.setText (1, 'Extracting info')
 		info = utube.get_video_info(self.ref_url)
 		if info == None:
-			self.t.emit (SIGNAL('error(QString)'))
+			self.t.emit (SIGNAL('error()'))
 			self.setText (1, 'Error')
 			self.stop_download = True
 			return
@@ -153,6 +153,11 @@ class MainWindow(QMainWindow):
 		self.tray = QSystemTrayIcon()
 		self.tray.setIcon ( icon('tool-animator.png') )
 		self.tray.setVisible (True)
+		self.trayMenu = QMenu()
+		toggleAction = self.createAction ('Show/Hide', self.toggleWindow)
+		self.trayMenu.addAction (toggleAction)
+		self.trayMenu.addSeparator()
+		self.trayMenu.addAction (quitAction)
 
 		self.setCentralWidget (self.table)
 		self.setWindowTitle ('WeTube')
@@ -169,7 +174,7 @@ class MainWindow(QMainWindow):
 			self.table.addTopLevelItem ( new_item )
 			self.table.setItemWidget ( new_item, 2, new_item.pbar )
 			self.status.showMessage ('Video added.', 5000)
-			self.connect (new_item.t, SIGNAL('error(QString)'), self.trouble)
+			self.connect (new_item.t, SIGNAL('error()'), self.trouble)
 			self.connect (new_item.downloader, SIGNAL('doneSize(int)'), new_item.pbar.setValue)
 			if dlg.startDownload.isChecked():
 				if new_item.t.isRunning():
@@ -182,6 +187,9 @@ class MainWindow(QMainWindow):
 			self.status.showMessage ('Nothing to remove!', 5000)
 			return None
 		curr = self.table.currentItem()
+		if curr is None:
+			self.status.showMessage ('No video selected!', 5000)
+			return
 		if curr.downloader.isRunning():
 			curr.stop_download = True
 			curr.downloader.wait()
@@ -209,6 +217,8 @@ class MainWindow(QMainWindow):
 
 	def download (self):
 		curr = self.table.currentItem()
+		if curr is None:
+			return
 		if curr.t.isRunning():
 			self.connect (curr.t, SIGNAL('finished()'), curr.downloader.start)
 		elif not curr.downloader.isRunning():
@@ -216,6 +226,8 @@ class MainWindow(QMainWindow):
 	
 	def pause (self):
 		curr = self.table.currentItem()
+		if curr is None:
+			return
 		if curr.downloader.isRunning():
 			curr.stop_download = True
 			curr.downloader.wait()
