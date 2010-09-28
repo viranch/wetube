@@ -15,85 +15,95 @@ __version__ = '0.9'
 
 class Item (QTreeWidgetItem):
 
-	def __init__ (self, ref_url, target_dir, vid_id, parent, columns):
+	def __init__ (self, parent, columns):
 		super (Item, self).__init__(parent, columns)
+		self.info = {}
 		self.parent = parent
-		self.ref_url = ref_url
-		self.target = target_dir
-		self.vid_id = vid_id
+		self.ref_url = ''
+		self.target_dir = ''
+		self.vid_id = ''
 		
 		self.title = 'This video'
-		self.length = 0
 		self.pbar = QProgressBar()
 		self.downloader = QThread()
 		self.downloader.run = self.download
 		self.stop_download = False
 		self.t = QThread()
 		self.t.run = self.extract_info
-		self.t.start()
 
 	def extract_info (self):
 		self.setText (1, 'Extracting info')
-		info = utube.get_video_info(self.ref_url)
-		if info == None:
+		if self.info=={}:
+			self.info = utube.get_video_info(self.ref_url)
+		if self.info == None:
 			self.t.emit (SIGNAL('error()'))
 			self.setText (1, 'Error')
 			self.stop_download = True
 			return
-		self.url = info['url']
-		self.uploader = info['uploader']
-		if info['title']!='':
-			self.title = info['title']
-			self.stitle = info['stitle']
+
+		self.info['ref_url'] = self.ref_url
+		if self.info['title']=='':
+			self.info['stitle'] = self.text(0)
 		else:
-			self.stitle = self.text(0)
-		self.ext = info['ext']
-		self.format = info['format']
-		self.thumbnail = info['thumbnail']
-		self.description = info['description']
-		self.player_url = info['player_url']
+			self.title = self.info['title']
+		#self.url = info['url']
+		#self.uploader = info['uploader']
+		#if info['title']!='':
+		#	self.title = info['title']
+		#	self.stitle = info['stitle']
+		#else:
+		#	self.stitle = self.text(0)
+		#self.ext = info['ext']
+		#self.format = info['format']
+		#self.thumbnail = info['thumbnail']
+		#self.description = info['description']
+		#self.player_url = info['player_url']
 		
-		self.setText (0, self.title)
-		self.setText (4, self.ext+' ('+str(self.format)+')')
-		self.target = self.target+os.sep+self.stitle+'.'+self.ext
-		self.setText (5, self.target)
+		if self.info['title']!='':
+			self.setText (0, self.info['title'])
+		self.setText (4, self.info['ext']+' ('+str(self.info['format'])+')')
+		self.info['target'] = self.target_dir+os.sep+self.info['stitle']+'.'+self.info['ext']
+		self.setText (5, self.info['target'])
 		self.setText (1, '')
 		self.getSize()
 
 	def getSize (self):
-		req = urllib2.Request(self.url, None, utube.std_headers)
-		f = urllib2.urlopen ( req )
-		self.length = int( f.info()['Content-length'] )
-		f.close()
-		if self.length > 1024*1024:
-			self.setText ( 3, str(round(self.length/1024.0/1024.0, 2))+' MB' )
-		elif self.length > 1024:
-			self.setText ( 3, str(round(self.length/1024.0, 2))+' KB' )
+		try:
+			l=self.info['length']
+		except KeyError:
+			req = urllib2.Request(self.info['url'], None, utube.std_headers)
+			f = urllib2.urlopen ( req )
+			l = self.info['length'] = int( f.info()['Content-length'] )
+			f.close()
+		if l > 1024*1024:
+			self.setText ( 3, str(round(l/1024.0/1024.0, 2))+' MB' )
+		elif l > 1024:
+			self.setText ( 3, str(round(l/1024.0, 2))+' KB' )
 		else:
-			self.setText ( 3, str(self.length)+' B' )
-		self.pbar.setRange (0, self.length)
-		if os.path.isfile (self.target):
-			self.downloader.emit ( SIGNAL('doneSize(int)'), os.path.getsize(self.target) )
+			self.setText ( 3, str(l)+' B' )
+		self.pbar.setRange (0, l)
+		if os.path.isfile (self.info['target']):
+			self.downloader.emit ( SIGNAL('doneSize(int)'), os.path.getsize(self.info['target']) )
 
 	def download (self):
 		if self.stop_download:
 			return
 		self.setText (1, 'Downloading')
 		done_size = 0
-		req = urllib2.Request(self.url, None, utube.std_headers)
+		req = urllib2.Request(self.info['url'], None, utube.std_headers)
 		open_mode = 'wb'
-		if os.path.isfile (self.target):
-			done_size = os.path.getsize (self.target)
+		if os.path.isfile (self.info['target']):
+			done_size = os.path.getsize (self.info['target'])
 			req.add_header ('Range', 'bytes=%d-' % done_size)
 			open_mode = 'ab'
 		self.downloader.emit (SIGNAL('doneSize(int)'), done_size)
-		if done_size>=self.length:
+		if done_size>=self.info['length']:
 			self.setText (1, 'Complete')
 			return
 		
-		vid = open ( self.target, open_mode )
+		vid = open ( self.info['target'], open_mode )
 		f = urllib2.urlopen ( req )
-		while done_size<self.length and not self.stop_download:
+		while done_size<self.info['length'] and not self.stop_download:
 			s = f.read (1024*5)
 			vid.write (s)
 			done_size += len(s)
@@ -158,6 +168,7 @@ class MainWindow(QMainWindow):
 		self.trayMenu.addAction (toggleAction)
 		self.trayMenu.addSeparator()
 		self.trayMenu.addAction (quitAction)
+		self.tray.setContextMenu (self.trayMenu)
 
 		self.setCentralWidget (self.table)
 		self.setWindowTitle ('WeTube')
@@ -165,18 +176,46 @@ class MainWindow(QMainWindow):
 		
 		self.connect ( self.tray, SIGNAL('activated(QSystemTrayIcon::ActivationReason)'), self.toggleWindow )
 
-	def add (self):
-		import new
-		dlg = new.NewDlg(self)
-		if dlg.exec_():
-			url = str(dlg.urlEdit.text()).strip()
-			new_item = Item (url, str(dlg.savetoEdit.text()), dlg.vid_id, self.table, ['video_'+str(dlg.vid_id), '', '', '', '', ''])
+	def loadPrefs (self):
+		settings = QSettings ('WeTube', 'WeTube')
+		cnt = settings.value('count').toInt()[0]
+		for i in range(cnt):
+			settings.beginGroup('vid'+str(i))
+			vid_id = str ( settings.value('vid_id').toString() )
+			ref_url = str ( settings.value('ref_url').toString() )
+			if vid_id == '':
+				vid_id = utube.get_video_id (ref_url)
+			curr = Item (self.table, ['video_'+vid_id, '', '', '', '', ''])
+			curr.vid_id = vid_id
+			curr.target_dir = os.sep.join (str ( settings.value('target').toString() ).split(os.sep)[:-1])
+			curr.ref_url = ref_url
+			if len(settings.allKeys())>2:
+				for key in settings.allKeys():
+					curr.info[str(key)] = str ( settings.value(key).toString() )
+			settings.endGroup()
+			try: curr.info['length'] = int ( curr.info['length'] )
+			except KeyError: pass
+			self.add (curr)
+
+	def add (self, new_item=None, startDownload=False):
+		if new_item == None:
+			import new
+			dlg = new.NewDlg(self)
+			if dlg.exec_():
+				url = str(dlg.urlEdit.text()).strip()
+				new_item = Item (self.table, ['video_'+str(dlg.vid_id), '', '', '', '', ''])
+				new_item.ref_url = url
+				new_item.vid_id = str(dlg.vid_id)
+				new_item.target_dir = str(dlg.savetoEdit.text())
+				self.add (new_item, dlg.startDownload.isChecked())
+		else:
 			self.table.addTopLevelItem ( new_item )
 			self.table.setItemWidget ( new_item, 2, new_item.pbar )
 			self.status.showMessage ('Video added.', 5000)
 			self.connect (new_item.t, SIGNAL('error()'), self.trouble)
 			self.connect (new_item.downloader, SIGNAL('doneSize(int)'), new_item.pbar.setValue)
-			if dlg.startDownload.isChecked():
+			new_item.t.start()
+			if startDownload:
 				if new_item.t.isRunning():
 					self.connect (new_item.t, SIGNAL('finished()'), new_item.downloader.start)
 				elif not new_item.stop_download:
@@ -244,11 +283,29 @@ class MainWindow(QMainWindow):
 			self.hide()
 		event.ignore()
 
-	def toggleWindow (self, reason):
+	def toggleWindow (self, reason=QSystemTrayIcon.Trigger):
 		if reason == QSystemTrayIcon.Trigger:
 			self.hide() if self.isVisible() else self.show()
 
 	def quit (self):
+		settings = QSettings ('WeTube', 'WeTube')
+		cnt = self.table.topLevelItemCount()
+		settings.setValue ('count', cnt)
+		for i in range (cnt):
+			curr = self.table.topLevelItem (i)
+			if curr.t.isRunning():
+				curr.t.terminate()
+			if curr.downloader.isRunning():
+				curr.stop_download = True
+				curr.downloader.wait()
+			settings.beginGroup ('vid'+str(i))
+			for key in curr.info.keys():
+				settings.setValue (key, curr.info[key])
+			if curr.info == {}:
+				print 'empty'
+				settings.setValue ('ref_url', curr.ref_url)
+				settings.setValue ('target', curr.target_dir+os.sep)
+			settings.endGroup()
 		qApp.quit()
 
 	def createAction (self, text, slot=None, shortcut=None, tip=None, icon=None, checkable=False, signal='triggered()'):
@@ -269,4 +326,5 @@ if __name__=='__main__':
 	app = QApplication (sys.argv)
 	window = MainWindow()
 	window.showMaximized()
+	window.loadPrefs()
 	app.exec_()

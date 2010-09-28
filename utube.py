@@ -180,7 +180,7 @@ def get_video_info ( url ):
 #		try:
 		# Process video information
 		ret = {
-			'id':		video_id.decode('utf-8'),
+			'vid_id':	video_id.decode('utf-8'),
 			'url':		video_real_url.decode('utf-8'),
 			'uploader':	video_uploader.decode('utf-8'),
 			'title':	video_title,
