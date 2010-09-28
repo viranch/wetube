@@ -46,18 +46,6 @@ class Item (QTreeWidgetItem):
 			self.info['stitle'] = self.text(0)
 		else:
 			self.title = self.info['title']
-		#self.url = info['url']
-		#self.uploader = info['uploader']
-		#if info['title']!='':
-		#	self.title = info['title']
-		#	self.stitle = info['stitle']
-		#else:
-		#	self.stitle = self.text(0)
-		#self.ext = info['ext']
-		#self.format = info['format']
-		#self.thumbnail = info['thumbnail']
-		#self.description = info['description']
-		#self.player_url = info['player_url']
 		
 		if self.info['title']!='':
 			self.setText (0, self.info['title'])
@@ -302,7 +290,6 @@ class MainWindow(QMainWindow):
 			for key in curr.info.keys():
 				settings.setValue (key, curr.info[key])
 			if curr.info == {}:
-				print 'empty'
 				settings.setValue ('ref_url', curr.ref_url)
 				settings.setValue ('target', curr.target_dir+os.sep)
 			settings.endGroup()
