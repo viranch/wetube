@@ -19,7 +19,7 @@ class NewDlg (QDialog):
 		browseButton = QToolButton ()
 		browseButton.setIcon ( icon('document-open.png') )
 		
-		self.startDownload = QCheckBox('Start download immediately')
+		self.startDownload = QCheckBox('Add to download queue')
 		self.startDownload.setChecked (True)
 		
 		buttonBox = QDialogButtonBox ( QDialogButtonBox.Ok | QDialogButtonBox.Cancel )
@@ -45,6 +45,7 @@ class NewDlg (QDialog):
 	
 	def check_accept (self):
 		url = str(self.urlEdit.text()).strip()
+		self.urlEdit.setText ( url.split('&')[0] )
 		if ( utube.valid(url) ):
 			self.vid_id = utube.get_video_id (url).decode('utf-8')
 			cnt = self.parent.table.topLevelItemCount()

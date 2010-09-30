@@ -20,26 +20,19 @@ class MainWindow(QMainWindow):
 	def __init__ ( self, parent=None ):
 		super (MainWindow, self).__init__(parent)
 
-		self.maxSimulDlds = 2 # will be included in settings dialog later
-
 		self.toolbar = self.addToolBar ('Toolbar')
 		self.status = self.statusBar()
 		self.status.showMessage ('Ready')
 
 		self.table = QTreeWidget()
-		headerItem = self.table.headerItem()
-		headerItem.setIcon (0, QIcon(icon('applications-multimedia.png')))
-		headerItem.setText (0, 'Title')
-		#headerItem.setIcon (1, QIcon(icon('flag-green.png')))
-		headerItem.setText (1, 'Status')
-		#headerItem.setIcon (2, QIcon(icon('flag-red.png')))
-		headerItem.setText (2, 'Downloaded')
-		#headerItem.setIcon (3, QIcon(icon('edit-copy.png')))
-		headerItem.setText (3, 'Size')
-		#headerItem.setIcon (4, QIcon(icon('edit-copy.png')))
-		headerItem.setText (4, 'Format')
-		#headerItem.setIcon (5, QIcon(icon('flag-green.png')))
-		headerItem.setText (5, 'Location')
+		self.table.setHeaderLabels ( ['Title', 'Status', 'Downloaded', 'Size', 'Format', 'Location'] )
+		#headerItem = self.tabel.headerItem()
+		#headerItem.setIcon (0, icon('applications-multimedia.png'))
+		#headerItem.setIcon (1, icon('flag-green.png'))
+		#headerItem.setIcon (2, icon('flag-red.png'))
+		#headerItem.setIcon (3, icon('edit-copy.png'))
+		#headerItem.setIcon (4, icon('edit-copy.png'))
+		#headerItem.setIcon (5, icon('flag-green.png'))
 		self.table.setRootIsDecorated (False)
 
 		addAction = self.createAction ('Add', self.add, QKeySequence.New, 'Add...', icon('document-new.png'))
@@ -49,6 +42,7 @@ class MainWindow(QMainWindow):
 		pauseAction = self.createAction ('Pause', self.pause, None, 'Pause Download', icon('media-playback-pause.png'))
 		startAllAction = self.createAction ('Start All', self.startAll, None, 'Start/Resume all downloads', icon('media-playback-start.png'))
 		suspendAction = self.createAction ('Suspend Downloads', self.suspend, None, 'Suspend all downloads', icon('media-playback-start.png'))
+		configAction = self.createAction ('Settings', self.configure, None, 'Configure WeTube', icon('configure.png'))
 		aboutAction = self.createAction ('About', self.about, None, 'About', icon('help-about.png'))
 		quitAction = self.createAction ('Quit', self.quit, 'Ctrl+Q', 'Quit', icon('application-exit.png'))
 		
@@ -62,6 +56,7 @@ class MainWindow(QMainWindow):
 		self.toolbar.addAction ( startAllAction )
 		self.toolbar.addAction ( suspendAction )
 		self.toolbar.addSeparator()
+		self.toolbar.addAction ( configAction )
 		self.toolbar.addAction ( aboutAction )
 		self.toolbar.addAction ( quitAction )
 		
@@ -84,6 +79,7 @@ class MainWindow(QMainWindow):
 	def loadPrefs (self):
 		settings = QSettings ('WeTube', 'WeTube')
 		cnt = settings.value('count').toInt()[0]
+		self.maxSimulDlds = settings.value('msd').toInt()[0]
 		for i in range(cnt):
 			settings.beginGroup('vid'+str(i))
 			
@@ -93,20 +89,38 @@ class MainWindow(QMainWindow):
 			length = str ( settings.value ('length').toString() )
 			format = str ( settings.value ('format').toString() )
 			target = str ( settings.value ('target').toString() )
+
+			curr = item.Item (self, ref_url, target_dir, [title, '', '', length, format, target])
 			
-			curr = item.Item (self.table, ref_url, target_dir, [title, '', '', length, format, target])
-			
-			bytes = settings.value('bytes').toInt()
-			if bytes[1]:
-				pbar = settings.value('pbar').toInt()[0]
-				curr.pbar.setRange (0, bytes[0])
-				if pbar < bytes[0]:
-					if not os.path.isfile (target): pbar = 0
-					else: pbar = os.path.getsize (target)
-				curr.set_state ( pbar )
-				curr.info['length'] = bytes[0]
+			bytes = settings.value('bytes').toInt()[0]
+			pbar = settings.value('pbar').toInt()[0]
+			curr.pbar.setRange (0, bytes)
+			if pbar < bytes:
+				if not os.path.isfile (target): pbar = -1
+				else: pbar = os.path.getsize (target)
+			curr.set_state ( pbar )
+			if bytes != 100:
+				curr.info['length'] = bytes
 			settings.endGroup()
 			self.add (curr)
+
+	def check_filename (self, target, index):
+		tgt = target
+		ctr = 1
+		while True:
+			ctr += 1
+			found = False
+			for i in range ( self.table.topLevelItemCount() ):
+				if i==index:
+					continue
+				curr = self.table.topLevelItem(i)
+				if curr.text(5) == tgt:
+					tgt = target[:-4]+'_'+str(ctr)+target[-4:]
+					found = True
+					break
+			if not found:
+				break
+		return tgt
 
 	def add (self, new_item=None, startDownload=False):
 		if new_item == None:
@@ -115,10 +129,17 @@ class MainWindow(QMainWindow):
 			if dlg.exec_():
 				ref_url = str(dlg.urlEdit.text()).strip()
 				target_dir = str(dlg.savetoEdit.text())
-				new_item = item.Item (self.table, ref_url, target_dir, ['', '', '', '', '', ''])
+				new_item = item.Item (self, ref_url, target_dir, ['', '', '', '', '', ''])
 				self.add (new_item, dlg.startDownload.isChecked())
 		else:
-			self.table.addTopLevelItem ( new_item )
+			pos = self.table.topLevelItemCount()
+			for i in range ( pos ):
+				curr = self.table.topLevelItem(i)
+				if curr.pbar.value() >= curr.pbar.maximum():
+					pos = i
+					break
+			self.table.insertTopLevelItem ( pos, new_item )
+			new_item.index = pos
 			self.table.setItemWidget ( new_item, 2, new_item.pbar )
 			self.status.showMessage ('Video added.', 5000)
 			self.connect (new_item.t, SIGNAL('error()'), self.trouble)
@@ -185,7 +206,11 @@ class MainWindow(QMainWindow):
 	def startAll (self):
 		i = 0
 		ctr = 0
-		while i < self.maxSimulDlds and ctr < self.table.topLevelItemCount():
+		if self.maxSimulDlds==0:
+			i_max = self.table.topLevelItemCount()
+		else:
+			i_max = self.maxSimulDlds
+		while i < i_max and ctr < self.table.topLevelItemCount():
 			curr = self.table.topLevelItem (ctr)
 			if curr.pbar.value() < curr.pbar.maximum():
 				if curr.t.isRunning():
@@ -203,15 +228,22 @@ class MainWindow(QMainWindow):
 				curr.startDownload = False
 			elif curr.downloader.isRunning():
 				curr.stop_download = True
-				stopped.append (i)
-		for i in stopped:
-			curr = self.table.topLevelItem(i)
-			if curr.downloader.isRunning():
-				curr.downloader.wait()
-			curr.stop_download = False
+				stopped.append (curr)
+		cnt = 0
+		while cnt<len(stopped):
+			for curr in stopped:
+				if not curr.downloader.isRunning():
+					cnt += 1
+					curr.stop_download = False
 
 	def trouble (self):
 		QMessageBox.critical (self, 'Error', utube._err[0])
+
+	def configure (self):
+		import settings
+		dlg = settings.SettingsDlg()
+		if dlg.exec_():
+			self.maxSimulDlds = dlg.msdSpin.value()
 
 	def about (self):
 		return
@@ -228,8 +260,10 @@ class MainWindow(QMainWindow):
 	def quit (self):
 		self.hide()
 		settings = QSettings ('WeTube', 'WeTube')
+		settings.clear()
 		cnt = self.table.topLevelItemCount()
 		settings.setValue ('count', cnt)
+		settings.setValue ('msd', self.maxSimulDlds)
 		for i in range (cnt):
 			curr = self.table.topLevelItem (i)
 			if curr.t.isRunning():
@@ -240,13 +274,12 @@ class MainWindow(QMainWindow):
 			settings.beginGroup ('vid'+str(i))
 			settings.setValue ('ref_url', curr.ref_url)
 			settings.setValue ('target_dir', curr.target_dir)
-			if curr.pbar.value()>-1:
-				settings.setValue ('bytes', curr.pbar.maximum())
-				settings.setValue ('pbar', curr.pbar.value())
-			settings.setValue ('title', str(curr.text(0)))
-			settings.setValue ('length', str(curr.text(3)))
-			settings.setValue ('format', str(curr.text(4)))
-			settings.setValue ('target', str(curr.text(5)))
+			settings.setValue ('bytes', curr.pbar.maximum())
+			settings.setValue ('pbar', curr.pbar.value())
+			settings.setValue ('title', curr.text(0))
+			settings.setValue ('length', curr.text(3))
+			settings.setValue ('format', curr.text(4))
+			settings.setValue ('target', curr.text(5))
 			settings.endGroup()
 		qApp.quit()
 
@@ -267,6 +300,6 @@ class MainWindow(QMainWindow):
 if __name__=='__main__':
 	app = QApplication (sys.argv)
 	window = MainWindow()
-	window.showMaximized()
 	window.loadPrefs()
+	window.showMaximized()
 	app.exec_()
