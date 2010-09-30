@@ -76,12 +76,12 @@ def get_video_info ( url ):
 	video_id = get_video_id (url)
 
 	# Get video webpage
-	request = urllib2.Request('http://www.youtube.com/watch?v=%s&gl=US&hl=en' % video_id, None, std_headers)
-	try:
-		video_webpage = urllib2.urlopen(request).read()
-	except (urllib2.URLError, httplib.HTTPException, socket.error), err:
+	#request = urllib2.Request('http://www.youtube.com/watch?v=%s&gl=US&hl=en' % video_id, None, std_headers)
+	#try:
+		#video_webpage = urllib2.urlopen(request).read()
+	#except (urllib2.URLError, httplib.HTTPException, socket.error), err:
 		#trouble(u'unable to download video webpage: %s' % str(err))
-		video_webpage = None
+	video_webpage = None
 
 	# Attempt to extract SWF player URL
 	if video_webpage != None:
@@ -93,6 +93,7 @@ def get_video_info ( url ):
 
 	# Get video info
 	for el_type in ['&el=embedded', '&el=detailpage', '&el=vevo', '']:
+		print el_type
 		video_info_url = ('http://www.youtube.com/get_video_info?&video_id=%s%s&ps=default&eurl=&gl=US&hl=en'
 					% (video_id, el_type))
 		request = urllib2.Request(video_info_url, None, std_headers)
@@ -188,8 +189,8 @@ def get_video_info ( url ):
 			'ext':		video_extension.decode('utf-8'),
 			'format':	(format_param is None and u'NA' or format_param.decode('utf-8')),
 			'thumbnail':	video_thumbnail.decode('utf-8'),
-			'description':	video_description.decode('utf-8'),
-			'player_url':	player_url,
+#			'description':	video_description.decode('utf-8'),
+#			'player_url':	player_url,
 		}
 		return ret
 #		except UnavailableVideoError, err:
@@ -197,6 +198,7 @@ def get_video_info ( url ):
 
 def trouble ( err ):
 	_err[0] = err
+	print err
 
 if __name__=='__main__':
 	import sys
