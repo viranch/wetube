@@ -15,7 +15,7 @@ class NewDlg (QDialog):
 		self.urlEdit = QLineEdit()
 		
 		savetoLabel = QLabel ('Save to:')
-		self.savetoEdit = QLineEdit ( os.getcwd() )
+		self.savetoEdit = QLineEdit ( parent.download_dir )
 		browseButton = QToolButton ()
 		browseButton.setIcon ( icon('document-open.png') )
 		
@@ -54,6 +54,19 @@ class NewDlg (QDialog):
 				if curr.vid_id == self.vid_id:
 					QMessageBox.critical (self, 'Already there', curr.title+' is already in the list.')
 					return
-			self.accept()
+			saveTo = str(self.savetoEdit.text())
+			if os.access ( saveTo, os.F_OK ):
+				if os.access ( saveTo, os.W_OK ):
+					self.accept()
+				else:
+					QMessageBox.critical (self, 'Permission Error', 'You do not have write permission on the directory.\nPlease select another directory.')
+			else:
+				b = QMessageBox.question (self, 'Error', saveTo+' does not exist.\nDo you want to create it?', QMessageBox.Yes|QMessageBox.No)
+				if b==QMessageBox.Yes:
+					try:
+						os.makedirs (saveTo)
+						self.accept()
+					except Exception as err:
+						QMessageBox.critical (self, 'Error', str(err))
 		else:
 			QMessageBox.critical (self, 'Invalid URL', 'Invalid URL:\n'+url)

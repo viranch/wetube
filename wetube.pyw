@@ -20,6 +20,8 @@ class MainWindow(QMainWindow):
 	def __init__ ( self, parent=None ):
 		super (MainWindow, self).__init__(parent)
 
+		self.running_startAll = False
+
 		self.toolbar = self.addToolBar ('Toolbar')
 		self.status = self.statusBar()
 		self.status.showMessage ('Ready')
@@ -75,11 +77,26 @@ class MainWindow(QMainWindow):
 		self.setWindowIcon ( QIcon(icon('acroread.png')) )
 		
 		self.connect ( self.tray, SIGNAL('activated(QSystemTrayIcon::ActivationReason)'), self.toggleWindow )
+		self.connect ( self.table, SIGNAL('itemChanged(QTreeWidgetItem*,int)'), self.updateUi )
+
+	def updateUi (self, item, col):
+		if col==1:
+			if item.text (col) == 'Downloading':
+				item.setIcon (0, icon('download.png'))
+			elif item.text(col) == '' or item.text(col) == 'Paused':
+				item.setIcon (0, icon('empty.png'))
+			elif item.text (col) == 'Complete':
+				item.setIcon (0, icon('task-complete.png'))
+			elif item.text (col) == 'Queued':
+				item.setIcon (0, icon('download-later.png'))
+			else:
+				print item.text(col)
 
 	def loadPrefs (self):
 		settings = QSettings ('WeTube', 'WeTube')
 		cnt = settings.value('count').toInt()[0]
 		self.maxSimulDlds = settings.value('msd').toInt()[0]
+		self.download_dir = str ( settings.value('download_dir').toString() )
 		for i in range(cnt):
 			settings.beginGroup('vid'+str(i))
 			
@@ -99,9 +116,8 @@ class MainWindow(QMainWindow):
 				if not os.path.isfile (target): pbar = -1
 				else: pbar = os.path.getsize (target)
 			curr.set_state ( pbar )
-			if bytes != 100:
-				curr.info['length'] = bytes
 			settings.endGroup()
+			self.updateUi (curr, 1)
 			self.add (curr)
 
 	def check_filename (self, target, index):
@@ -144,6 +160,7 @@ class MainWindow(QMainWindow):
 			self.status.showMessage ('Video added.', 5000)
 			self.connect (new_item.t, SIGNAL('error()'), self.trouble)
 			self.connect (new_item.downloader, SIGNAL('doneSize(int)'), new_item.set_state)
+			self.connect (new_item.downloader, SIGNAL('done()'), self.startAll)
 			if new_item.pbar.value() < new_item.pbar.maximum():
 				new_item.t.start()
 			if startDownload:
@@ -191,8 +208,12 @@ class MainWindow(QMainWindow):
 			return
 		if curr.t.isRunning():
 			curr.startDownload = True
+			curr.explicit = True
+			print 'getting info thread running'
 		elif not curr.downloader.isRunning():
 			curr.downloader.start()
+			curr.explicit = True
+			print 'download should start'
 	
 	def pause (self):
 		curr = self.table.currentItem()
@@ -200,50 +221,60 @@ class MainWindow(QMainWindow):
 			return
 		if curr.downloader.isRunning():
 			curr.stop_download = True
-			curr.downloader.wait()
-			curr.stop_download = False
 
 	def startAll (self):
+		if not self.running_startAll:
+			self.running_startAll = True
+		else: return
 		i = 0
-		ctr = 0
 		if self.maxSimulDlds==0:
 			i_max = self.table.topLevelItemCount()
 		else:
 			i_max = self.maxSimulDlds
-		while i < i_max and ctr < self.table.topLevelItemCount():
+		for ctr in range ( self.table.topLevelItemCount() ):
 			curr = self.table.topLevelItem (ctr)
-			if curr.pbar.value() < curr.pbar.maximum():
-				if curr.t.isRunning():
-					curr.startDownload = True
-				elif not curr.downloader.isRunning():
-					curr.downloader.start()
-				i += 1
-			ctr += 1
+			if curr.pbar.value() < curr.pbar.maximum() and not curr.explicit:
+				if i<i_max:
+					if curr.t.isRunning():
+						curr.startDownload = i<i_max
+					elif not curr.downloader.isRunning():
+						curr.downloader.start()
+					i += 1
+				else:
+					if curr.t.isRunning():
+						curr.startDownload = False
+					elif curr.downloader.isRunning():
+						curr.stop_download = True
+					curr.setText (1, 'Queued')
+		self.running_startAll = False
 
 	def suspend (self):
-		stopped = []
 		for i in range ( self.table.topLevelItemCount() ):
 			curr = self.table.topLevelItem(i)
 			if curr.t.isRunning():
 				curr.startDownload = False
 			elif curr.downloader.isRunning():
 				curr.stop_download = True
-				stopped.append (curr)
-		cnt = 0
-		while cnt<len(stopped):
-			for curr in stopped:
-				if not curr.downloader.isRunning():
-					cnt += 1
-					curr.stop_download = False
-
+	"""
+#				stopped.append (curr)
+#		cnt = 0
+#		while cnt<len(stopped):
+#			for curr in stopped:
+#				if not curr.downloader.isRunning():
+#					cnt += 1
+#					curr.stop_download = False
+	"""
 	def trouble (self):
 		QMessageBox.critical (self, 'Error', utube._err[0])
 
 	def configure (self):
 		import settings
-		dlg = settings.SettingsDlg()
+		dlg = settings.SettingsDlg(self)
 		if dlg.exec_():
-			self.maxSimulDlds = dlg.msdSpin.value()
+			if self.maxSimulDlds != dlg.msdSpin.value():
+				self.maxSimulDlds = dlg.msdSpin.value()
+				self.startAll()
+			self.download_dir = str ( dlg.downdirEdit.text() )
 
 	def about (self):
 		return
@@ -264,13 +295,15 @@ class MainWindow(QMainWindow):
 		cnt = self.table.topLevelItemCount()
 		settings.setValue ('count', cnt)
 		settings.setValue ('msd', self.maxSimulDlds)
+		settings.setValue ('download_dir', self.download_dir)
 		for i in range (cnt):
 			curr = self.table.topLevelItem (i)
 			if curr.t.isRunning():
 				curr.t.terminate()
 			if curr.downloader.isRunning():
 				curr.stop_download = True
-				curr.downloader.wait()
+				if not curr.downloader.wait(10*1000): #wait for 10 seconds = 10*1000 milli seconds
+					curr.downloader.terminate()
 			settings.beginGroup ('vid'+str(i))
 			settings.setValue ('ref_url', curr.ref_url)
 			settings.setValue ('target_dir', curr.target_dir)
@@ -302,4 +335,6 @@ if __name__=='__main__':
 	window = MainWindow()
 	window.loadPrefs()
 	window.showMaximized()
+	if len(QSettings('WeTube','WeTube').allKeys())==0:
+		window.configure()
 	app.exec_()
