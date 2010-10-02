@@ -74,7 +74,7 @@ class MainWindow(QMainWindow):
 
 		self.setCentralWidget (self.table)
 		self.setWindowTitle ('WeTube')
-		self.setWindowIcon ( QIcon(icon('acroread.png')) )
+		self.setWindowIcon ( icon('WeTube.png') )
 		
 		self.connect ( self.tray, SIGNAL('activated(QSystemTrayIcon::ActivationReason)'), self.toggleWindow )
 		self.connect ( self.table, SIGNAL('itemChanged(QTreeWidgetItem*,int)'), self.updateUi )
